@@ -2,14 +2,13 @@
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
-using System.Reflection;
-using System.Runtime.ExceptionServices;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Html;
-using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
+using Microsoft.Extensions.Internal;
 using Microsoft.Extensions.Logging;
 
 namespace Microsoft.AspNetCore.Mvc.ViewComponents
@@ -101,25 +100,25 @@ namespace Microsoft.AspNetCore.Mvc.ViewComponents
 
             using (_logger.ViewComponentScope(context))
             {
-                var arguments = ControllerActionExecutor.PrepareArguments(context.Arguments, executor);
+                var arguments = PrepareArguments(context.Arguments, executor);
 
                 _diagnosticSource.BeforeViewComponent(context, component);
                 _logger.ViewComponentExecuting(context, arguments);
 
                 var startTimestamp = _logger.IsEnabled(LogLevel.Debug) ? Stopwatch.GetTimestamp() : 0;
 
-                object resultAsObject = null;
-                var taskGenericType = executor.TaskGenericType;
+                object resultAsObject;
+                var returnType = executor.MethodReturnType;
 
-                if (taskGenericType == typeof(IViewComponentResult))
+                if (returnType == typeof(Task<IViewComponentResult>))
                 {
                     resultAsObject = await (Task<IViewComponentResult>)executor.Execute(component, arguments);
                 }
-                else if (taskGenericType == typeof(string))
+                else if (returnType == typeof(Task<string>))
                 {
                     resultAsObject = await (Task<string>)executor.Execute(component, arguments);
                 }
-                else if (taskGenericType == typeof(IHtmlContent))
+                else if (returnType == typeof(Task<IHtmlContent>))
                 {
                     resultAsObject = await (Task<IHtmlContent>)executor.Execute(component, arguments);
                 }
@@ -144,9 +143,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewComponents
 
             using (_logger.ViewComponentScope(context))
             {
-                var arguments = ControllerActionExecutor.PrepareArguments(
-                    context.Arguments,
-                    executor);
+                var arguments = PrepareArguments(context.Arguments, executor);
 
                 _diagnosticSource.BeforeViewComponent(context, component);
                 _logger.ViewComponentExecuting(context, arguments);
@@ -202,6 +199,33 @@ namespace Microsoft.AspNetCore.Mvc.ViewComponents
                 typeof(string).Name,
                 typeof(IHtmlContent).Name,
                 typeof(IViewComponentResult).Name));
+        }
+
+        private static object[] PrepareArguments(
+            IDictionary<string, object> parameters,
+            ObjectMethodExecutor objectMethodExecutor)
+        {
+            var declaredParameterInfos = objectMethodExecutor.MethodParameters;
+            var count = declaredParameterInfos.Length;
+            if (count == 0)
+            {
+                return null;
+            }
+
+            var arguments = new object[count];
+            for (var index = 0; index < count; index++)
+            {
+                var parameterInfo = declaredParameterInfos[index];
+
+                if (!parameters.TryGetValue(parameterInfo.Name, out var value))
+                {
+                    value = objectMethodExecutor.GetDefaultValueForParameter(index);
+                }
+
+                arguments[index] = value;
+            }
+
+            return arguments;
         }
     }
 }

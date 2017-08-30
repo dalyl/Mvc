@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Mvc.Internal;
 using Microsoft.AspNetCore.Mvc.Razor.Compilation;
 using Microsoft.AspNetCore.Mvc.Razor.Internal;
 using Microsoft.AspNetCore.Mvc.Razor.TagHelpers;
-using Microsoft.AspNetCore.Razor.Runtime.TagHelpers;
 using Microsoft.AspNetCore.Razor.TagHelpers;
 using Microsoft.Extensions.DependencyInjection;
 using Moq;
@@ -115,7 +114,6 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Test.DependencyInjection
                 .ConfigureApplicationPartManager(manager =>
                 {
                     manager.ApplicationParts.Add(new TestApplicationPart());
-                    manager.FeatureProviders.Add(new TagHelperFeatureProvider());
                 });
 
             // Act
@@ -124,9 +122,6 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Test.DependencyInjection
             // Assert
             var activatorDescriptor = Assert.Single(services.ToList(), d => d.ServiceType == typeof(ITagHelperActivator));
             Assert.Equal(typeof(ServiceBasedTagHelperActivator), activatorDescriptor.ImplementationType);
-
-            var resolverDescriptor = Assert.Single(services.ToList(), d => d.ServiceType == typeof(ITagHelperTypeResolver));
-            Assert.Equal(typeof(FeatureTagHelperTypeResolver), resolverDescriptor.ImplementationType);
         }
 
         [Fact]
@@ -149,7 +144,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Test.DependencyInjection
 
             // Assert
             var collection = services.ToList();
-            Assert.Equal(4, collection.Count);
+            Assert.Equal(3, collection.Count);
 
             var tagHelperOne = Assert.Single(collection, t => t.ServiceType == typeof(TestTagHelperOne));
             Assert.Equal(typeof(TestTagHelperOne), tagHelperOne.ImplementationType);
@@ -162,10 +157,6 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Test.DependencyInjection
             var activator = Assert.Single(collection, t => t.ServiceType == typeof(ITagHelperActivator));
             Assert.Equal(typeof(ServiceBasedTagHelperActivator), activator.ImplementationType);
             Assert.Equal(ServiceLifetime.Transient, activator.Lifetime);
-
-            var typeResolver = Assert.Single(collection, t => t.ServiceType == typeof(ITagHelperTypeResolver));
-            Assert.Equal(typeof(FeatureTagHelperTypeResolver), typeResolver.ImplementationType);
-            Assert.Equal(ServiceLifetime.Transient, typeResolver.Lifetime);
         }
 
         private class TestTagHelperOne : TagHelper

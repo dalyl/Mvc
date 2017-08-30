@@ -15,8 +15,6 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 {
     public class ControllerActionInvokerProvider : IActionInvokerProvider
     {
-        private readonly IControllerArgumentBinder _argumentBinder;
-        private readonly IControllerFactory _controllerFactory;
         private readonly ControllerActionInvokerCache _controllerActionInvokerCache;
         private readonly IReadOnlyList<IValueProviderFactory> _valueProviderFactories;
         private readonly int _maxModelValidationErrors;
@@ -24,26 +22,19 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         private readonly DiagnosticSource _diagnosticSource;
 
         public ControllerActionInvokerProvider(
-            IControllerFactory controllerFactory,
             ControllerActionInvokerCache controllerActionInvokerCache,
-            IControllerArgumentBinder argumentBinder,
             IOptions<MvcOptions> optionsAccessor,
             ILoggerFactory loggerFactory,
             DiagnosticSource diagnosticSource)
         {
-            _controllerFactory = controllerFactory;
             _controllerActionInvokerCache = controllerActionInvokerCache;
-            _argumentBinder = argumentBinder;
             _valueProviderFactories = optionsAccessor.Value.ValueProviderFactories.ToArray();
             _maxModelValidationErrors = optionsAccessor.Value.MaxModelValidationErrors;
             _logger = loggerFactory.CreateLogger<ControllerActionInvoker>();
             _diagnosticSource = diagnosticSource;
         }
 
-        public int Order
-        {
-            get { return -1000; }
-        }
+        public int Order => -1000;
 
         /// <inheritdoc />
         public void OnProvidersExecuting(ActionInvokerProviderContext context)
@@ -53,25 +44,23 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 throw new ArgumentNullException(nameof(context));
             }
 
-            var actionDescriptor = context.ActionContext.ActionDescriptor as ControllerActionDescriptor;
-
-            if (actionDescriptor != null)
+            if (context.ActionContext.ActionDescriptor is ControllerActionDescriptor)
             {
                 var controllerContext = new ControllerContext(context.ActionContext);
                 // PERF: These are rarely going to be changed, so let's go copy-on-write.
                 controllerContext.ValueProviderFactories = new CopyOnWriteList<IValueProviderFactory>(_valueProviderFactories);
                 controllerContext.ModelState.MaxAllowedErrors = _maxModelValidationErrors;
 
-                var cacheState = _controllerActionInvokerCache.GetState(controllerContext);
+                var cacheResult = _controllerActionInvokerCache.GetCachedResult(controllerContext);
 
-                context.Result = new ControllerActionInvoker(
-                    _controllerFactory,
-                    _argumentBinder,
+                var invoker = new ControllerActionInvoker(
                     _logger,
                     _diagnosticSource,
                     controllerContext,
-                    cacheState.Filters,
-                    cacheState.ActionMethodExecutor);
+                    cacheResult.cacheEntry,
+                    cacheResult.filters);
+
+                context.Result = invoker;
             }
         }
 

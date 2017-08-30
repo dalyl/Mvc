@@ -3,9 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Razor.Compilation;
 using Microsoft.CodeAnalysis;
-using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.Extensions.FileProviders;
 
 namespace Microsoft.AspNetCore.Mvc.Razor
@@ -15,24 +15,20 @@ namespace Microsoft.AspNetCore.Mvc.Razor
     /// </summary>
     public class RazorViewEngineOptions
     {
-        private CSharpParseOptions _parseOptions = new CSharpParseOptions(LanguageVersion.CSharp6);
-        private CSharpCompilationOptions _compilationOptions =
-            new CSharpCompilationOptions(CodeAnalysis.OutputKind.DynamicallyLinkedLibrary);
         private Action<RoslynCompilationContext> _compilationCallback = c => { };
 
         /// <summary>
         /// Gets a <see cref="IList{IViewLocationExpander}"/> used by the <see cref="RazorViewEngine"/>.
         /// </summary>
-        public IList<IViewLocationExpander> ViewLocationExpanders { get; }
-            = new List<IViewLocationExpander>();
+        public IList<IViewLocationExpander> ViewLocationExpanders { get; } = new List<IViewLocationExpander>();
 
         /// <summary>
         /// Gets the sequence of <see cref="IFileProvider" /> instances used by <see cref="RazorViewEngine"/> to
         /// locate Razor files.
         /// </summary>
         /// <remarks>
-        /// At startup, this is initialized to include an instance of <see cref="PhysicalFileProvider"/> that is
-        /// rooted at the application root.
+        /// At startup, this is initialized to include an instance of
+        /// <see cref="IHostingEnvironment.ContentRootFileProvider"/> that is rooted at the application root.
         /// </remarks>
         public IList<IFileProvider> FileProviders { get; } = new List<IFileProvider>();
 
@@ -92,6 +88,36 @@ namespace Microsoft.AspNetCore.Mvc.Razor
         public IList<string> AreaViewLocationFormats { get; } = new List<string>();
 
         /// <summary>
+        /// Gets the locations where <see cref="RazorViewEngine"/> will search for views (such as layouts and partials)
+        /// when searched from the context of rendering a Razor Page.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Locations are format strings (see https://msdn.microsoft.com/en-us/library/txafckwd.aspx) which may contain
+        /// the following format items:
+        /// </para>
+        /// <list type="bullet">
+        /// <item>
+        /// <description>{0} - View Name</description>
+        /// </item>
+        /// <item>
+        /// <description>{1} - Page Name</description>
+        /// </item>
+        /// </list>
+        /// <para>
+        /// <see cref="PageViewLocationFormats"/> work in tandem with a view location expander to perform hierarchical
+        /// path lookups. For instance, given a Page like /Account/Manage/Index using /Pages as the root, the view engine
+        /// will search for views in the following locations:
+        ///
+        ///  /Pages/Account/Manage/{0}.cshtml
+        ///  /Pages/Account/{0}.cshtml
+        ///  /Pages/{0}.cshtml
+        ///  /Views/Shared/{0}.cshtml
+        /// </para>
+        /// </remarks>
+        public IList<string> PageViewLocationFormats { get; } = new List<string>();
+
+        /// <summary>
         /// Gets the <see cref="MetadataReference" /> instances that should be included in Razor compilation, along with
         /// those discovered by <see cref="MetadataReferenceFeatureProvider" />s.
         /// </summary>
@@ -106,7 +132,7 @@ namespace Microsoft.AspNetCore.Mvc.Razor
         /// </remarks>
         public Action<RoslynCompilationContext> CompilationCallback
         {
-            get { return _compilationCallback; }
+            get => _compilationCallback;
             set
             {
                 if (value == null)
@@ -115,40 +141,6 @@ namespace Microsoft.AspNetCore.Mvc.Razor
                 }
 
                 _compilationCallback = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the <see cref="CSharpParseOptions"/> options used by Razor view compilation.
-        /// </summary>
-        public CSharpParseOptions ParseOptions
-        {
-            get { return _parseOptions; }
-            set
-            {
-                if (value == null)
-                {
-                    throw new ArgumentNullException(nameof(value));
-                }
-
-                _parseOptions = value;
-            }
-        }
-
-        /// <summary>
-        /// Gets or sets the <see cref="CSharpCompilationOptions"/> used by Razor view compilation.
-        /// </summary>
-        public CSharpCompilationOptions CompilationOptions
-        {
-            get { return _compilationOptions; }
-            set
-            {
-                if (value == null)
-                {
-                    throw new ArgumentNullException(nameof(value));
-                }
-
-                _compilationOptions = value;
             }
         }
     }

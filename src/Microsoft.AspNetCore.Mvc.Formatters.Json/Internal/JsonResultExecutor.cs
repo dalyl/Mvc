@@ -33,8 +33,8 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
         /// <param name="options">The <see cref="IOptions{MvcJsonOptions}"/>.</param>
         /// <param name="charPool">The <see cref="ArrayPool{Char}"/> for creating <see cref="T:char[]"/> buffers.</param>
         public JsonResultExecutor(
-            IHttpResponseStreamWriterFactory writerFactory, 
-            ILogger<JsonResultExecutor> logger, 
+            IHttpResponseStreamWriterFactory writerFactory,
+            ILogger<JsonResultExecutor> logger,
             IOptions<MvcJsonOptions> options,
             ArrayPool<char> charPool)
         {
@@ -85,7 +85,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
         /// <param name="context">The <see cref="ActionContext"/>.</param>
         /// <param name="result">The <see cref="JsonResult"/>.</param>
         /// <returns>A <see cref="Task"/> which will complete when writing has completed.</returns>
-        public Task ExecuteAsync(ActionContext context, JsonResult result)
+        public virtual Task ExecuteAsync(ActionContext context, JsonResult result)
         {
             if (context == null)
             {
@@ -99,14 +99,12 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
 
             var response = context.HttpContext.Response;
 
-            string resolvedContentType = null;
-            Encoding resolvedContentTypeEncoding = null;
             ResponseContentTypeHelper.ResolveContentTypeAndEncoding(
                 result.ContentType,
                 response.ContentType,
                 DefaultContentType,
-                out resolvedContentType,
-                out resolvedContentTypeEncoding);
+                out var resolvedContentType,
+                out var resolvedContentTypeEncoding);
 
             response.ContentType = resolvedContentType;
 
@@ -124,13 +122,14 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
                 {
                     jsonWriter.ArrayPool = _charPool;
                     jsonWriter.CloseOutput = false;
+                    jsonWriter.AutoCompleteOnClose = false;
 
                     var jsonSerializer = JsonSerializer.Create(serializerSettings);
                     jsonSerializer.Serialize(jsonWriter, result.Value);
                 }
             }
 
-            return TaskCache.CompletedTask;
+            return Task.CompletedTask;
         }
     }
 }

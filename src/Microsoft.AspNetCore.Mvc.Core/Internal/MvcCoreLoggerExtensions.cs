@@ -38,6 +38,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
         private static readonly Action<ILogger, object, Exception> _authorizationFailure;
         private static readonly Action<ILogger, object, Exception> _resourceFilterShortCircuit;
+        private static readonly Action<ILogger, object, Exception> _resultFilterShortCircuit;
         private static readonly Action<ILogger, object, Exception> _actionFilterShortCircuit;
         private static readonly Action<ILogger, object, Exception> _exceptionFilterShortCircuit;
 
@@ -68,6 +69,13 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         private static readonly Action<ILogger, string, string, Exception> _redirectToRouteResultExecuting;
 
         private static readonly Action<ILogger, string[], Exception> _noActionsMatched;
+
+        private static readonly Action<ILogger, string, Exception> _redirectToPageResultExecuting;
+
+        private static readonly Action<ILogger, Exception> _featureNotFound;
+        private static readonly Action<ILogger, Exception> _featureIsReadOnly;
+        private static readonly Action<ILogger, string, Exception> _maxRequestBodySizeSet;
+        private static readonly Action<ILogger, Exception> _requestBodySizeLimitDisabled;
 
         static MvcCoreLoggerExtensions()
         {
@@ -118,13 +126,18 @@ namespace Microsoft.AspNetCore.Mvc.Internal
 
             _authorizationFailure = LoggerMessage.Define<object>(
                 LogLevel.Information,
-                1,
+                3,
                 "Authorization failed for the request at filter '{AuthorizationFilter}'.");
 
             _resourceFilterShortCircuit = LoggerMessage.Define<object>(
                 LogLevel.Debug,
-                2,
+                4,
                 "Request was short circuited at resource filter '{ResourceFilter}'.");
+
+            _resultFilterShortCircuit = LoggerMessage.Define<object>(
+                LogLevel.Debug,
+                5,
+                "Request was short circuited at result filter '{ResultFilter}'.");
 
             _actionFilterShortCircuit = LoggerMessage.Define<object>(
                 LogLevel.Debug,
@@ -226,10 +239,35 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 1,
                 "Executing RedirectToRouteResult, redirecting to {Destination} from route {RouteName}.");
 
+            _redirectToPageResultExecuting = LoggerMessage.Define<string>(
+                LogLevel.Information,
+                1,
+                "Executing RedirectToPageResult, redirecting to {Page}.");
+
             _noActionsMatched = LoggerMessage.Define<string[]>(
                 LogLevel.Debug,
                 3,
                 "No actions matched the current request. Route values: {RouteValues}");
+
+            _featureNotFound = LoggerMessage.Define(
+                LogLevel.Warning,
+                1,
+                "A request body size limit could not be applied. This server does not support the IHttpRequestBodySizeFeature.");
+
+            _featureIsReadOnly = LoggerMessage.Define(
+                LogLevel.Warning,
+                2,
+                "A request body size limit could not be applied. The IHttpRequestBodySizeFeature for the server is read-only.");
+
+            _maxRequestBodySizeSet = LoggerMessage.Define<string>(
+                LogLevel.Debug,
+                3,
+                "The maximum request body size has been set to {RequestSize}.");
+
+            _requestBodySizeLimitDisabled = LoggerMessage.Define(
+                LogLevel.Debug,
+                3,
+                "The request body size limit has been disabled.");
         }
 
         public static IDisposable ActionScope(this ILogger logger, ActionDescriptor action)
@@ -351,6 +389,13 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             IFilterMetadata filter)
         {
             _resourceFilterShortCircuit(logger, filter, null);
+        }
+
+        public static void ResultFilterShortCircuited(
+            this ILogger logger,
+            IFilterMetadata filter)
+        {
+            _resultFilterShortCircuit(logger, filter, null);
         }
 
         public static void ExceptionFilterShortCircuited(
@@ -499,6 +544,29 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             _redirectToRouteResultExecuting(logger, destination, routeName, null);
         }
 
+        public static void RedirectToPageResultExecuting(this ILogger logger, string page)
+            => _redirectToPageResultExecuting(logger, page, null);
+
+        public static void FeatureNotFound(this ILogger logger)
+        {
+            _featureNotFound(logger, null);
+        }
+
+        public static void FeatureIsReadOnly(this ILogger logger)
+        {
+            _featureIsReadOnly(logger, null);
+        }
+
+        public static void MaxRequestBodySizeSet(this ILogger logger, string requestSize)
+        {
+            _maxRequestBodySizeSet(logger, requestSize, null);
+        }
+
+        public static void RequestBodySizeLimitDisabled(this ILogger logger)
+        {
+            _requestBodySizeLimitDisabled(logger, null);
+        }
+
         private class ActionLogScope : IReadOnlyList<KeyValuePair<string, object>>
         {
             private readonly ActionDescriptor _action;
@@ -529,17 +597,11 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 }
             }
 
-            public int Count
-            {
-                get
-                {
-                    return 2;
-                }
-            }
+            public int Count => 2;
 
             public IEnumerator<KeyValuePair<string, object>> GetEnumerator()
             {
-                for (int i = 0; i < Count; ++i)
+                for (var i = 0; i < Count; ++i)
                 {
                     yield return this[i];
                 }

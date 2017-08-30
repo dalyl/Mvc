@@ -16,6 +16,8 @@ namespace FiltersWebSite
         // Set up application services
         public void ConfigureServices(IServiceCollection services)
         {
+            services.AddScheme<BasicOptions, BasicAuthenticationHandler>("Interactive", _ => { });
+            services.AddScheme<BasicOptions, BasicAuthenticationHandler>("Api", _ => { });
             services.AddMvc();
             services.AddAuthorization(options =>
             {
@@ -58,10 +60,6 @@ namespace FiltersWebSite
 
         public void Configure(IApplicationBuilder app)
         {
-            app.UseCultureReplacer();
-
-            app.UseMiddleware<AuthorizeBasicMiddleware>("Interactive");
-            app.UseMiddleware<AuthorizeBasicMiddleware>("Api");
             app.UseMiddleware<ErrorReporterMiddleware>();
 
             app.UseMvcWithDefaultRoute();

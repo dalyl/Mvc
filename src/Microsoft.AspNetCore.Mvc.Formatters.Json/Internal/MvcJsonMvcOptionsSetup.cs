@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers;
+using Microsoft.AspNetCore.JsonPatch;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.ObjectPool;
@@ -59,22 +60,28 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Json.Internal
         {
             options.OutputFormatters.Add(new JsonOutputFormatter(_jsonSerializerSettings, _charPool));
 
-            var jsonInputLogger = _loggerFactory.CreateLogger<JsonInputFormatter>();
-            options.InputFormatters.Add(new JsonInputFormatter(
-                jsonInputLogger,
-                _jsonSerializerSettings,
-                _charPool,
-                _objectPoolProvider));
-
+            // Register JsonPatchInputFormatter before JsonInputFormatter, otherwise
+            // JsonInputFormatter would consume "application/json-patch+json" requests
+            // before JsonPatchInputFormatter gets to see them.
             var jsonInputPatchLogger = _loggerFactory.CreateLogger<JsonPatchInputFormatter>();
             options.InputFormatters.Add(new JsonPatchInputFormatter(
                 jsonInputPatchLogger,
                 _jsonSerializerSettings,
                 _charPool,
-                _objectPoolProvider));
+                _objectPoolProvider,
+                options.SuppressInputFormatterBuffering));
+
+            var jsonInputLogger = _loggerFactory.CreateLogger<JsonInputFormatter>();
+            options.InputFormatters.Add(new JsonInputFormatter(
+                jsonInputLogger,
+                _jsonSerializerSettings,
+                _charPool,
+                _objectPoolProvider,
+                options.SuppressInputFormatterBuffering));
 
             options.FormatterMappings.SetMediaTypeMappingForFormat("json", MediaTypeHeaderValue.Parse("application/json"));
 
+            options.ModelMetadataDetailsProviders.Add(new SuppressChildValidationMetadataProvider(typeof(IJsonPatchDocument)));
             options.ModelMetadataDetailsProviders.Add(new SuppressChildValidationMetadataProvider(typeof(JToken)));
         }
     }

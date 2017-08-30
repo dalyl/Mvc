@@ -5,7 +5,6 @@ using System;
 using System.Linq.Expressions;
 using System.Reflection;
 using Microsoft.AspNetCore.Mvc.Razor.Compilation;
-using Microsoft.AspNetCore.Razor.Evolution;
 
 namespace Microsoft.AspNetCore.Mvc.Razor.Internal
 {
@@ -15,27 +14,18 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
     /// </summary>
     public class DefaultRazorPageFactoryProvider : IRazorPageFactoryProvider
     {
-        private const string ViewImportsFileName = "_ViewImports.cshtml";
-        private readonly RazorCompiler _razorCompiler;
+        private readonly IViewCompilerProvider _viewCompilerProvider;
 
         /// <summary>
         /// Initializes a new instance of <see cref="DefaultRazorPageFactoryProvider"/>.
         /// </summary>
-        /// <param name="razorEngine">The <see cref="RazorEngine"/>.</param>
-        /// <param name="razorProject">The <see cref="RazorProject" />.</param>
-        /// <param name="compilationService">The <see cref="ICompilationService"/>.</param>
-        /// <param name="compilerCacheProvider">The <see cref="ICompilerCacheProvider"/>.</param>
-        public DefaultRazorPageFactoryProvider(
-            RazorEngine razorEngine,
-            RazorProject razorProject,
-            ICompilationService compilationService,
-            ICompilerCacheProvider compilerCacheProvider)
+        /// <param name="viewCompilerProvider">The <see cref="IViewCompilerProvider"/>.</param>
+        public DefaultRazorPageFactoryProvider(IViewCompilerProvider viewCompilerProvider)
         {
-            var templateEngine = new MvcRazorTemplateEngine(razorEngine, razorProject);
-            templateEngine.Options.ImportsFileName = ViewImportsFileName;
-
-            _razorCompiler = new RazorCompiler(compilationService, compilerCacheProvider, templateEngine);
+            _viewCompilerProvider = viewCompilerProvider;
         }
+
+        private IViewCompiler Compiler => _viewCompilerProvider.GetCompiler();
 
         /// <inheritdoc />
         public RazorPageFactoryResult CreateFactory(string relativePath)
@@ -51,26 +41,27 @@ namespace Microsoft.AspNetCore.Mvc.Razor.Internal
                 relativePath = relativePath.Substring(1);
             }
 
-            var result = _razorCompiler.Compile(relativePath);
-            if (result.Success)
+            var compileTask = Compiler.CompileAsync(relativePath);
+            var viewDescriptor = compileTask.GetAwaiter().GetResult();
+            if (viewDescriptor.ViewAttribute != null)
             {
-                var compiledType = result.CompiledType;
+                var compiledType = viewDescriptor.ViewAttribute.ViewType;
 
                 var newExpression = Expression.New(compiledType);
                 var pathProperty = compiledType.GetTypeInfo().GetProperty(nameof(IRazorPage.Path));
 
                 // Generate: page.Path = relativePath;
                 // Use the normalized path specified from the result.
-                var propertyBindExpression = Expression.Bind(pathProperty, Expression.Constant(result.RelativePath));
+                var propertyBindExpression = Expression.Bind(pathProperty, Expression.Constant(viewDescriptor.RelativePath));
                 var objectInitializeExpression = Expression.MemberInit(newExpression, propertyBindExpression);
                 var pageFactory = Expression
                     .Lambda<Func<IRazorPage>>(objectInitializeExpression)
                     .Compile();
-                return new RazorPageFactoryResult(pageFactory, result.ExpirationTokens, result.IsPrecompiled);
+                return new RazorPageFactoryResult(viewDescriptor, pageFactory);
             }
             else
             {
-                return new RazorPageFactoryResult(result.ExpirationTokens);
+                return new RazorPageFactoryResult(viewDescriptor, razorPageFactory: null);
             }
         }
     }

@@ -62,8 +62,10 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
             {
                 typeof(JsonMediaTypeFormatter).FullName,
                 typeof(XmlMediaTypeFormatter).FullName,
-#if !NETCOREAPP1_1
-                typeof(FormUrlEncodedMediaTypeFormatter).FullName,
+
+#if NET461
+                // We call into WebAPI and ask it to add all of its formatters. On net461 it adds this additional formatter.
+                typeof(FormUrlEncodedMediaTypeFormatter).FullName
 #endif
             };
 
@@ -143,7 +145,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var json = JsonConvert.DeserializeObject<Dictionary<string, string>>(response);
-            Assert.Equal(1, json.Count);
+            Assert.Single(json);
             Assert.Equal("The field ID must be between 0 and 100.", json["prefix.ID"]);
         }
 
@@ -165,7 +167,7 @@ namespace Microsoft.AspNetCore.Mvc.FunctionalTests
 
             // Assert
             var json = JsonConvert.DeserializeObject<Dictionary<string, string>>(response);
-            Assert.Equal(1, json.Count);
+            Assert.Single(json);
             Assert.Equal("The field ID must be between 0 and 100.", json["ID"]);
         }
 

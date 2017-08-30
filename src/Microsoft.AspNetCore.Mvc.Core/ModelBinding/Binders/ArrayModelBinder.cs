@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
-using Microsoft.AspNetCore.Mvc.Internal;
 
 namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
 {
@@ -37,7 +36,7 @@ namespace Microsoft.AspNetCore.Mvc.ModelBinding.Binders
         {
             Debug.Assert(targetType == typeof(TElement[]), "GenericModelBinder only creates this binder for arrays.");
 
-            return EmptyArray<TElement>.Instance;
+            return Array.Empty<TElement>();
         }
 
         /// <inheritdoc />

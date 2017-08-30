@@ -253,6 +253,7 @@ ViewWithNestedLayout-Content
             var expected =
 @"<embdedded-layout>Hello from EmbeddedShared/_Partial
 Hello from Shared/_EmbeddedPartial
+<a href=""/EmbeddedViews"">Tag Helper Link</a>
 </embdedded-layout>";
 
             // Act
@@ -475,6 +476,22 @@ Partial that does not specify Layout
                 responseContent,
                 ignoreLineEndingDifferences: true);
 #endif
+        }
+
+        [Fact]
+        public async Task ViewEngine_NormalizesPathsReturnedByViewLocationExpanders()
+        {
+            // Arrange
+            var expected = 
+@"Layout
+Page
+Partial";
+
+            // Act
+            var responseContent = await Client.GetStringAsync("/BackSlash");
+
+            // Assert
+            Assert.Equal(expected, responseContent.Trim());
         }
     }
 }

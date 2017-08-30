@@ -4,9 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-#if NETSTANDARD1_6
-using System.Reflection;
-#endif
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc.Abstractions;
@@ -51,10 +48,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
         }
 
         /// <inheritdoc />
-        public int Order
-        {
-            get { return -1000; }
-        }
+        public int Order => -1000;
 
         /// <inheritdoc />
         public void OnProvidersExecuting(ApiDescriptionProviderContext context)
@@ -66,6 +60,11 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
             foreach (var action in context.Actions.OfType<ControllerActionDescriptor>())
             {
+                if (action.AttributeRouteInfo != null && action.AttributeRouteInfo.SuppressPathMatching)
+                {
+                    continue;
+                }
+
                 var extensionData = action.GetProperty<ApiDescriptionActionData>();
                 if (extensionData != null)
                 {
@@ -115,7 +114,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
             var runtimeReturnType = GetRuntimeReturnType(declaredReturnType);
 
-            var apiResponseTypes = GetApiResponseTypes(action, responseMetadataAttributes, runtimeReturnType);
+            var apiResponseTypes = GetApiResponseTypes(responseMetadataAttributes, runtimeReturnType);
             foreach (var apiResponseType in apiResponseTypes)
             {
                 apiDescription.SupportedResponseTypes.Add(apiResponseType);
@@ -125,7 +124,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
             // could end up with duplicate data.
             foreach (var parameter in apiDescription.ParameterDescriptions.Where(p => p.Source == BindingSource.Body))
             {
-                var requestFormats = GetRequestFormats(action, requestMetadataAttributes, parameter.Type);
+                var requestFormats = GetRequestFormats(requestMetadataAttributes, parameter.Type);
                 foreach (var format in requestFormats)
                 {
                     apiDescription.SupportedRequestFormats.Add(format);
@@ -259,8 +258,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
         private RouteTemplate ParseTemplate(ControllerActionDescriptor action)
         {
-            if (action.AttributeRouteInfo != null &&
-                action.AttributeRouteInfo.Template != null)
+            if (action.AttributeRouteInfo?.Template != null)
             {
                 return TemplateParser.Parse(action.AttributeRouteInfo.Template);
             }
@@ -299,7 +297,6 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
         }
 
         private IReadOnlyList<ApiRequestFormat> GetRequestFormats(
-            ControllerActionDescriptor action,
             IApiRequestMetadataProvider[] requestMetadataAttributes,
             Type type)
         {
@@ -349,7 +346,6 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
         }
 
         private IReadOnlyList<ApiResponseType> GetApiResponseTypes(
-            ControllerActionDescriptor action,
             IApiResponseMetadataProvider[] responseMetadataAttributes,
             Type type)
         {
@@ -576,7 +572,7 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
                 Context = context;
                 Parameter = parameter;
 
-                Visited = new HashSet<PropertyKey>();
+                Visited = new HashSet<PropertyKey>(new PropertyKeyEqualityComparer());
             }
 
             public ApiParameterContext Context { get; }
@@ -733,7 +729,11 @@ namespace Microsoft.AspNetCore.Mvc.ApiExplorer
 
                 public int GetHashCode(PropertyKey obj)
                 {
-                    return obj.ContainerType.GetHashCode() ^ obj.PropertyName.GetHashCode() ^ obj.Source.GetHashCode();
+                    var hashCodeCombiner = HashCodeCombiner.Start();
+                    hashCodeCombiner.Add(obj.ContainerType);
+                    hashCodeCombiner.Add(obj.PropertyName);
+                    hashCodeCombiner.Add(obj.Source);
+                    return hashCodeCombiner.CombinedHash;
                 }
             }
         }

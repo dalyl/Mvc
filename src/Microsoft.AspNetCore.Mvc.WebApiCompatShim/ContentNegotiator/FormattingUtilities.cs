@@ -1,14 +1,11 @@
 // Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
-#if NETSTANDARD1_6
-
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Net.Http.Formatting;
 using System.Net.Http.Headers;
-using System.Reflection;
 using System.Xml;
 using Newtonsoft.Json.Linq;
 
@@ -135,7 +132,7 @@ namespace System.Net.Http
         public static HttpContentHeaders CreateEmptyContentHeaders()
         {
             HttpContent tempContent = null;
-            HttpContentHeaders contentHeaders = null;
+            HttpContentHeaders contentHeaders;
             try
             {
                 tempContent = new StringContent(string.Empty);
@@ -162,9 +159,6 @@ namespace System.Net.Http
         {
             // MaxDepth is a DOS mitigation. We don't support MaxDepth in portable libraries because it is strictly
             // client side.
-#if NETFX_CORE
-            return XmlDictionaryReaderQuotas.Max;
-#else
             return new XmlDictionaryReaderQuotas()
             {
                 MaxArrayLength = int.MaxValue,
@@ -173,7 +167,6 @@ namespace System.Net.Http
                 MaxNameTableCharCount = int.MaxValue,
                 MaxStringContentLength = int.MaxValue
             };
-#endif
         }
 
         /// <summary>
@@ -241,4 +234,3 @@ namespace System.Net.Http
         }
     }
 }
-#endif

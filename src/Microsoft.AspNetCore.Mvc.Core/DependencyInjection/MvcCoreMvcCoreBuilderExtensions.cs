@@ -37,7 +37,7 @@ namespace Microsoft.Extensions.DependencyInjection
                 throw new ArgumentNullException(nameof(setupAction));
             }
 
-            builder.Services.Configure<MvcOptions>(setupAction);
+            builder.Services.Configure(setupAction);
             return builder;
         }
 
@@ -90,7 +90,9 @@ namespace Microsoft.Extensions.DependencyInjection
         // Internal for testing.
         internal static void AddAuthorizationServices(IServiceCollection services)
         {
+            services.AddAuthenticationCore();
             services.AddAuthorization();
+            services.AddAuthorizationPolicyEvaluator();
 
             services.TryAddEnumerable(
                 ServiceDescriptor.Transient<IApplicationModelProvider, AuthorizationApplicationModelProvider>());

@@ -69,9 +69,9 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                             selected = actions[1];
                         }
 
-                        routeContext.Handler = (c) => TaskCache.CompletedTask;
+                        routeContext.Handler = (c) => Task.CompletedTask;
 
-                        return TaskCache.CompletedTask;
+                        return Task.CompletedTask;
 
                     });
                 return handler.Object;
@@ -545,6 +545,231 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             Assert.IsType<RouteCreationException>(exception.InnerException);
         }
 
+        [Fact]
+        public void GetEntries_DoesNotCreateOutboundEntriesForAttributesWithSuppressForLinkGenerationSetToTrue()
+        {
+            // Arrange
+            var actions = new List<ActionDescriptor>()
+            {
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/get/{id}",
+                        Name = "BLOG_LINK1",
+                        SuppressLinkGeneration = true,
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/{snake-cased-name}",
+                        Name = "BLOG_INDEX2",
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/",
+                        Name = "BLOG_HOME",
+                        SuppressPathMatching = true,
+                    },
+                },
+            };
+
+            var builder = CreateBuilder();
+            var actionDescriptorProvider = CreateActionDescriptorProvider(actions);
+            var route = CreateRoute(CreateHandler().Object, actionDescriptorProvider.Object);
+
+            // Act
+            route.AddEntries(builder, actionDescriptorProvider.Object.ActionDescriptors);
+
+            // Assert
+            Assert.Collection(
+                builder.OutboundEntries,
+                e =>
+                {
+                    Assert.Equal("BLOG_INDEX2", e.RouteName);
+                    Assert.Equal("blog/{snake-cased-name}", e.RouteTemplate.TemplateText);
+                },
+                e =>
+                {
+                    Assert.Equal("BLOG_HOME", e.RouteName);
+                    Assert.Equal("blog/", e.RouteTemplate.TemplateText);
+                });
+        }
+
+        [Fact]
+        public void GetEntries_DoesNotCreateOutboundEntriesForAttributesWithSuppressForLinkGenerationSetToTrue_WhenMultipleAttributesHaveTheSameTemplate()
+        {
+            // Arrange
+            var actions = new List<ActionDescriptor>()
+            {
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/get/{id}",
+                        Name = "BLOG_LINK1",
+                        SuppressLinkGeneration = true,
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/get/{id}",
+                        Name = "BLOG_LINK2",
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/",
+                        Name = "BLOG_HOME",
+                        SuppressPathMatching = true,
+                    },
+                },
+            };
+
+            var builder = CreateBuilder();
+            var actionDescriptorProvider = CreateActionDescriptorProvider(actions);
+            var route = CreateRoute(CreateHandler().Object, actionDescriptorProvider.Object);
+
+            // Act
+            route.AddEntries(builder, actionDescriptorProvider.Object.ActionDescriptors);
+
+            // Assert
+            Assert.Collection(
+                builder.OutboundEntries,
+                e =>
+                {
+                    Assert.Equal("BLOG_LINK2", e.RouteName);
+                    Assert.Equal("blog/get/{id}", e.RouteTemplate.TemplateText);
+                },
+                e =>
+                {
+                    Assert.Equal("BLOG_HOME", e.RouteName);
+                    Assert.Equal("blog/", e.RouteTemplate.TemplateText);
+                });
+        }
+
+
+        [Fact]
+        public void GetEntries_DoesNotCreateInboundEntriesForAttributesWithSuppressForPathMatchingSetToTrue()
+        {
+            // Arrange
+            var actions = new List<ActionDescriptor>()
+            {
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/get/{id}",
+                        Name = "BLOG_LINK1",
+                        SuppressLinkGeneration = true,
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/{snake-cased-name}",
+                        Name = "BLOG_LINK2",
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/",
+                        Name = "BLOG_HOME",
+                        SuppressPathMatching = true,
+                    },
+                },
+            };
+
+            var builder = CreateBuilder();
+            var actionDescriptorProvider = CreateActionDescriptorProvider(actions);
+            var route = CreateRoute(CreateHandler().Object, actionDescriptorProvider.Object);
+
+            // Act
+            route.AddEntries(builder, actionDescriptorProvider.Object.ActionDescriptors);
+
+            // Assert
+            Assert.Collection(
+                builder.InboundEntries,
+                e =>
+                {
+                    Assert.Equal("BLOG_LINK1", e.RouteName);
+                    Assert.Equal("blog/get/{id}", e.RouteTemplate.TemplateText);
+                },
+                e =>
+                {
+                    Assert.Equal("BLOG_LINK2", e.RouteName);
+                    Assert.Equal("blog/{snake-cased-name}", e.RouteTemplate.TemplateText);
+                });
+        }
+
+        [Fact]
+        public void GetEntries_DoesNotCreateInboundEntriesForAttributesWithSuppressForPathMatchingSetToTrue_WhenMultipleAttributesHaveTheSameTemplate()
+        {
+            // Arrange
+            var actions = new List<ActionDescriptor>()
+            {
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/get/{id}",
+                        Name = "BLOG_LINK1",
+                        SuppressPathMatching = true,
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/get/{id}",
+                        Name = "BLOG_LINK2",
+                    },
+                },
+                new ActionDescriptor()
+                {
+                    AttributeRouteInfo = new AttributeRouteInfo
+                    {
+                        Template = "blog/",
+                        Name = "BLOG_HOME",
+                        SuppressLinkGeneration = true,
+                    },
+                },
+            };
+
+            var builder = CreateBuilder();
+            var actionDescriptorProvider = CreateActionDescriptorProvider(actions);
+            var route = CreateRoute(CreateHandler().Object, actionDescriptorProvider.Object);
+
+            // Act
+            route.AddEntries(builder, actionDescriptorProvider.Object.ActionDescriptors);
+
+            // Assert
+            Assert.Collection(
+                builder.InboundEntries,
+                e =>
+                {
+                    Assert.Equal("BLOG_LINK2", e.RouteName);
+                    Assert.Equal("blog/get/{id}", e.RouteTemplate.TemplateText);
+                },
+                e =>
+                {
+                    Assert.Equal("BLOG_HOME", e.RouteName);
+                    Assert.Equal("blog/", e.RouteTemplate.TemplateText);
+                });
+        }
+
         private static TreeRouteBuilder CreateBuilder()
         {
             var services = new ServiceCollection()
@@ -563,7 +788,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             handler
                 .Setup(h => h.RouteAsync(It.IsAny<RouteContext>()))
                 .Callback<RouteContext>(c => c.Handler = NullHandler)
-                .Returns(TaskCache.CompletedTask)
+                .Returns(Task.CompletedTask)
                 .Verifiable();
             return handler;
         }

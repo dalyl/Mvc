@@ -1,51 +1,71 @@
 ﻿// Copyright (c) .NET Foundation. All rights reserved.
 // Licensed under the Apache License, Version 2.0. See License.txt in the project root for license information.
 
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
-using Microsoft.AspNetCore.Mvc.Razor;
+using Microsoft.AspNetCore.Mvc.ApplicationModels;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Razor.Compilation;
-using Microsoft.AspNetCore.Mvc.Razor.Internal;
 using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
-using Microsoft.AspNetCore.Razor.Evolution;
+using Microsoft.Extensions.Options;
 
 namespace Microsoft.AspNetCore.Mvc.RazorPages.Internal
 {
     public class DefaultPageLoader : IPageLoader
     {
-        private const string PageImportsFileName = "_PageImports.cshtml";
-        private const string ModelPropertyName = "Model";
-
-        private readonly MvcRazorTemplateEngine _templateEngine;
-        private readonly RazorCompiler _razorCompiler;
+        private readonly IPageApplicationModelProvider[] _applicationModelProviders;
+        private readonly IViewCompilerProvider _viewCompilerProvider;
+        private readonly IPageApplicationModelConvention[] _conventions;
+        private readonly FilterCollection _globalFilters;
 
         public DefaultPageLoader(
-            RazorEngine razorEngine,
-            RazorProject razorProject,
-            ICompilationService compilationService,
-            ICompilerCacheProvider compilerCacheProvider)
+            IEnumerable<IPageApplicationModelProvider> applicationModelProviders,
+            IViewCompilerProvider viewCompilerProvider,
+            IOptions<RazorPagesOptions> pageOptions,
+            IOptions<MvcOptions> mvcOptions)
         {
-            _templateEngine = new MvcRazorTemplateEngine(razorEngine, razorProject);
-            _templateEngine.Options.ImportsFileName = PageImportsFileName;
-            _razorCompiler = new RazorCompiler(compilationService, compilerCacheProvider, _templateEngine);
+            _applicationModelProviders = applicationModelProviders
+                .OrderBy(p => p.Order)
+                .ToArray();
+            _viewCompilerProvider = viewCompilerProvider;
+            _conventions = pageOptions.Value.Conventions
+                .OfType<IPageApplicationModelConvention>()
+                .ToArray();
+            _globalFilters = mvcOptions.Value.Filters;
         }
+
+        private IViewCompiler Compiler => _viewCompilerProvider.GetCompiler();
 
         public CompiledPageActionDescriptor Load(PageActionDescriptor actionDescriptor)
         {
-            var compilationResult = _razorCompiler.Compile(actionDescriptor.RelativePath);
-            var compiledTypeInfo = compilationResult.CompiledType.GetTypeInfo();
-            // If a model type wasn't set in code then the model property's type will be the same
-            // as the compiled type.
-            var modelTypeInfo = compiledTypeInfo.GetProperty(ModelPropertyName)?.PropertyType.GetTypeInfo();
-            if (modelTypeInfo == compiledTypeInfo)
+            if (actionDescriptor == null)
             {
-                modelTypeInfo = null;
+                throw new ArgumentNullException(nameof(actionDescriptor));
             }
 
-            return new CompiledPageActionDescriptor(actionDescriptor)
+            var compileTask = Compiler.CompileAsync(actionDescriptor.RelativePath);
+            var viewDescriptor = compileTask.GetAwaiter().GetResult();
+            var pageAttribute = (RazorPageAttribute)viewDescriptor.ViewAttribute;
+
+            var context = new PageApplicationModelProviderContext(actionDescriptor, pageAttribute.ViewType.GetTypeInfo());
+            for (var i = 0; i < _applicationModelProviders.Length; i++)
             {
-                PageTypeInfo = compiledTypeInfo,
-                ModelTypeInfo = modelTypeInfo,
-            };
+                _applicationModelProviders[i].OnProvidersExecuting(context);
+            }
+
+            for (var i = _applicationModelProviders.Length - 1; i >= 0; i--)
+            {
+                _applicationModelProviders[i].OnProvidersExecuted(context);
+            }
+
+            for (var i = 0; i < _conventions.Length; i++)
+            {
+                _conventions[i].Apply(context.PageApplicationModel);
+            }
+
+            return CompiledPageActionDescriptorBuilder.Build(context.PageApplicationModel, _globalFilters);
         }
     }
 }

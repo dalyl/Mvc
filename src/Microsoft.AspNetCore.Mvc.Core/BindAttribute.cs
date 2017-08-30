@@ -4,10 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Microsoft.AspNetCore.Mvc.Internal;
-#if NETSTANDARD1_6
-using System.Reflection;
-#endif
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 
 namespace Microsoft.AspNetCore.Mvc
@@ -51,13 +47,7 @@ namespace Microsoft.AspNetCore.Mvc
         /// <summary>
         /// Represents the model name used during model binding.
         /// </summary>
-        string IModelNameProvider.Name
-        {
-            get
-            {
-                return Prefix;
-            }
-        }
+        string IModelNameProvider.Name => Prefix;
 
         /// <inheritdoc />
         public Func<ModelMetadata, bool> PropertyFilter
@@ -84,7 +74,7 @@ namespace Microsoft.AspNetCore.Mvc
         {
             if (string.IsNullOrEmpty(original))
             {
-                return EmptyArray<string>.Instance;
+                return Array.Empty<string>();
             }
 
             var split = original.Split(',').Select(piece => piece.Trim()).Where(piece => !string.IsNullOrEmpty(piece));

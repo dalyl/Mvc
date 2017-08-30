@@ -149,7 +149,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 Logger.NoFormatter(formatterContext);
 
                 context.HttpContext.Response.StatusCode = StatusCodes.Status406NotAcceptable;
-                return TaskCache.CompletedTask;
+                return Task.CompletedTask;
             }
 
             Logger.FormatterSelected(selectedFormatter, formatterContext);
@@ -193,7 +193,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             }
 
             var request = formatterContext.HttpContext.Request;
-            var acceptableMediaTypes = GetAcceptableMediaTypes(contentTypes, request);
+            var acceptableMediaTypes = GetAcceptableMediaTypes(request);
             var selectFormatterWithoutRegardingAcceptHeader = false;
             IOutputFormatter selectedFormatter = null;
 
@@ -254,12 +254,11 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         }
 
         private List<MediaTypeSegmentWithQuality> GetAcceptableMediaTypes(
-            MediaTypeCollection contentTypes,
             HttpRequest request)
         {
             var result = new List<MediaTypeSegmentWithQuality>();
             AcceptHeaderParser.ParseAcceptHeader(request.Headers[HeaderNames.Accept], result);
-            for (int i = 0; i < result.Count; i++)
+            for (var i = 0; i < result.Count; i++)
             {
                 var mediaType = new MediaType(result[i].MediaType);
                 if (!RespectBrowserAcceptHeader && mediaType.MatchesAllSubTypes && mediaType.MatchesAllTypes)
@@ -302,6 +301,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             foreach (var formatter in formatters)
             {
                 formatterContext.ContentType = new StringSegment();
+                formatterContext.ContentTypeIsServerDefined = false;
                 if (formatter.CanWriteResult(formatterContext))
                 {
                     return formatter;
@@ -349,6 +349,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             {
                 var mediaType = sortedAcceptHeaders[i];
                 formatterContext.ContentType = mediaType.MediaType;
+                formatterContext.ContentTypeIsServerDefined = false;
                 for (var j = 0; j < formatters.Count; j++)
                 {
                     var formatter = formatters[j];
@@ -401,6 +402,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                 foreach (var contentType in acceptableContentTypes)
                 {
                     formatterContext.ContentType = new StringSegment(contentType);
+                    formatterContext.ContentTypeIsServerDefined = true;
                     if (formatter.CanWriteResult(formatterContext))
                     {
                         return formatter;
@@ -446,6 +448,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
                         {
                             var formatter = formatters[k];
                             formatterContext.ContentType = new StringSegment(possibleOutputContentTypes[j]);
+                            formatterContext.ContentTypeIsServerDefined = true;
                             if (formatter.CanWriteResult(formatterContext))
                             {
                                 return formatter;
@@ -469,8 +472,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
             {
                 var contentType = contentTypes[i];
                 var parsedContentType = new MediaType(contentType);
-                if (parsedContentType.MatchesAllTypes ||
-                    parsedContentType.MatchesAllSubTypes)
+                if (parsedContentType.HasWildcard)
                 {
                     var message = Resources.FormatObjectResult_MatchAllContentType(
                         contentType,

@@ -9,7 +9,9 @@ using System.Text;
 using System.Threading.Tasks;
 using System.Xml;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.Mvc.ModelBinding;
+using Microsoft.AspNetCore.Mvc.TestCommon;
 using Moq;
 using Xunit;
 
@@ -58,6 +60,11 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
         [InlineData("text/*", false)]
         [InlineData("text/json", false)]
         [InlineData("application/json", false)]
+        [InlineData("application/some.entity+xml", true)]
+        [InlineData("application/some.entity+xml;v=2", true)]
+        [InlineData("application/some.entity+json", false)]
+        [InlineData("application/some.entity+*", false)]
+        [InlineData("text/some.entity+json", false)]
         [InlineData("", false)]
         [InlineData(null, false)]
         [InlineData("invalid", false)]
@@ -110,12 +117,10 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             var formatter = new XmlDataContractSerializerInputFormatter();
 
             // Assert
-            Assert.True(formatter.SupportedMediaTypes
-                                 .Select(content => content.ToString())
-                                 .Contains("application/xml"));
-            Assert.True(formatter.SupportedMediaTypes
-                                 .Select(content => content.ToString())
-                                 .Contains("text/xml"));
+            Assert.Contains("application/xml", formatter.SupportedMediaTypes
+                                 .Select(content => content.ToString()));
+            Assert.Contains("text/xml", formatter.SupportedMediaTypes
+                                 .Select(content => content.ToString()));
         }
 
         [Fact]
@@ -125,8 +130,86 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             var formatter = new XmlDataContractSerializerInputFormatter();
 
             // Assert
-            Assert.True(formatter.SupportedEncodings.Any(i => i.WebName == "utf-8"));
-            Assert.True(formatter.SupportedEncodings.Any(i => i.WebName == "utf-16"));
+            Assert.Contains(formatter.SupportedEncodings, i => i.WebName == "utf-8");
+            Assert.Contains(formatter.SupportedEncodings, i => i.WebName == "utf-16");
+        }
+
+        [Fact]
+        public async Task BuffersRequestBody_ByDefault()
+        {
+            // Arrange
+            var expectedInt = 10;
+            var expectedString = "TestString";
+
+            var input = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                                "<TestLevelOne><SampleInt>" + expectedInt + "</SampleInt>" +
+                                "<sampleString>" + expectedString + "</sampleString></TestLevelOne>";
+
+            var formatter = new XmlDataContractSerializerInputFormatter();
+            var contentBytes = Encoding.UTF8.GetBytes(input);
+            var httpContext = new DefaultHttpContext();
+            httpContext.Features.Set<IHttpResponseFeature>(new TestResponseFeature());
+            httpContext.Request.Body = new NonSeekableReadStream(contentBytes);
+            httpContext.Request.ContentType = "application/json";
+            var context = GetInputFormatterContext(httpContext, typeof(TestLevelOne));
+
+            // Act
+            var result = await formatter.ReadAsync(context);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.False(result.HasError);
+            var model = Assert.IsType<TestLevelOne>(result.Model);
+
+            Assert.Equal(expectedInt, model.SampleInt);
+            Assert.Equal(expectedString, model.sampleString);
+
+            Assert.True(httpContext.Request.Body.CanSeek);
+            httpContext.Request.Body.Seek(0L, SeekOrigin.Begin);
+
+            result = await formatter.ReadAsync(context);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.False(result.HasError);
+            model = Assert.IsType<TestLevelOne>(result.Model);
+
+            Assert.Equal(expectedInt, model.SampleInt);
+            Assert.Equal(expectedString, model.sampleString);
+        }
+
+        [Fact]
+        public async Task SuppressInputFormatterBufferingSetToTrue_DoesNotBufferRequestBody()
+        {
+            // Arrange
+            var expectedInt = 10;
+            var expectedString = "TestString";
+
+            var input = "<?xml version=\"1.0\" encoding=\"UTF-8\"?>" +
+                                "<TestLevelOne><SampleInt>" + expectedInt + "</SampleInt>" +
+                                "<sampleString>" + expectedString + "</sampleString></TestLevelOne>";
+
+            var formatter = new XmlDataContractSerializerInputFormatter(suppressInputFormatterBuffering: true);
+            var contentBytes = Encoding.UTF8.GetBytes(input);
+            var httpContext = new DefaultHttpContext();
+            httpContext.Features.Set<IHttpResponseFeature>(new TestResponseFeature());
+            httpContext.Request.Body = new NonSeekableReadStream(contentBytes);
+            httpContext.Request.ContentType = "application/xml";
+            var context = GetInputFormatterContext(httpContext, typeof(TestLevelOne));
+
+            // Act
+            var result = await formatter.ReadAsync(context);
+
+            // Assert
+            Assert.NotNull(result);
+            Assert.False(result.HasError);
+            var model = Assert.IsType<TestLevelOne>(result.Model);
+
+            Assert.Equal(expectedInt, model.SampleInt);
+            Assert.Equal(expectedString, model.sampleString);
+
+            // Reading again should fail as buffering request body is disabled
+            await Assert.ThrowsAsync<XmlException>(() => formatter.ReadAsync(context));
         }
 
         [Fact]
@@ -224,7 +307,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             var context = GetInputFormatterContext(contentBytes, typeof(TestLevelTwo));
 
             // Act & Assert
-            await Assert.ThrowsAsync(typeof(SerializationException), async () => await formatter.ReadAsync(context));
+            await Assert.ThrowsAsync<SerializationException>(async () => await formatter.ReadAsync(context));
         }
 
         [Fact]
@@ -241,7 +324,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             var context = GetInputFormatterContext(contentBytes, typeof(TestLevelTwo));
 
             // Act & Assert
-            await Assert.ThrowsAsync(typeof(SerializationException), async () => await formatter.ReadAsync(context));
+            await Assert.ThrowsAsync<SerializationException>(async () => await formatter.ReadAsync(context));
         }
 
         [Fact]
@@ -251,7 +334,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             var formatter = new XmlDataContractSerializerInputFormatter();
 
             // Act & Assert
-            Assert.Throws(typeof(ArgumentException), () => formatter.MaxDepth = 0);
+            Assert.Throws<ArgumentException>(() => formatter.MaxDepth = 0);
         }
 
         [Fact]
@@ -413,7 +496,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             var context = GetInputFormatterContext(contentBytes, typeof(DummyClass));
 
             // Act & Assert
-            await Assert.ThrowsAsync(typeof(SerializationException), async () => await formatter.ReadAsync(context));
+            await Assert.ThrowsAsync<SerializationException>(async () => await formatter.ReadAsync(context));
         }
 
         [Fact]
@@ -470,7 +553,7 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             var context = GetInputFormatterContext(contentBytes, typeof(DummyClass));
 
             // Act & Assert
-            await Assert.ThrowsAsync(typeof(SerializationException), async () => await formatter.ReadAsync(context));
+            await Assert.ThrowsAsync<SerializationException>(async () => await formatter.ReadAsync(context));
         }
 
         [Fact]
@@ -514,6 +597,11 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
         private InputFormatterContext GetInputFormatterContext(byte[] contentBytes, Type modelType)
         {
             var httpContext = GetHttpContext(contentBytes);
+            return GetInputFormatterContext(httpContext, modelType);
+        }
+
+        private InputFormatterContext GetInputFormatterContext(HttpContext httpContext, Type modelType)
+        {
             var provider = new EmptyModelMetadataProvider();
             var metadata = provider.GetMetadataForType(modelType);
             return new InputFormatterContext(
@@ -548,6 +636,14 @@ namespace Microsoft.AspNetCore.Mvc.Formatters.Xml
             {
                 createSerializerCalledCount++;
                 return base.CreateSerializer(type);
+            }
+        }
+
+        private class TestResponseFeature : HttpResponseFeature
+        {
+            public override void OnCompleted(Func<object, Task> callback, object state)
+            {
+                // do not do anything
             }
         }
     }

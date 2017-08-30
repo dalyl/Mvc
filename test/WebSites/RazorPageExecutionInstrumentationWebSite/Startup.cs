@@ -5,7 +5,7 @@ using System.Diagnostics;
 using System.IO;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Razor.Evolution;
+using Microsoft.AspNetCore.Razor.Language;
 using Microsoft.Extensions.DependencyInjection;
 
 namespace RazorPageExecutionInstrumentationWebSite
@@ -27,8 +27,6 @@ namespace RazorPageExecutionInstrumentationWebSite
             var listener = new RazorPageDiagnosticListener();
             var diagnosticSource = app.ApplicationServices.GetRequiredService<DiagnosticListener>();
             diagnosticSource.SubscribeWithAdapter(listener);
-
-            app.UseCultureReplacer();
 
             app.Use(async (context, next) =>
             {

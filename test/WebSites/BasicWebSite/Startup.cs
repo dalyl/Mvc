@@ -28,8 +28,6 @@ namespace BasicWebSite
 
         public void Configure(IApplicationBuilder app)
         {
-            app.UseCultureReplacer();
-
             app.UseStaticFiles();
 
             // Initializes the RequestId service for each request
@@ -46,6 +44,7 @@ namespace BasicWebSite
                 routes.MapRoute("ActionAsMethod", "{controller}/{action}",
                     defaults: new { controller = "Home", action = "Index" });
 
+                routes.MapRoute("PageRoute", "{controller}/{action}/{page}");
             });
         }
     }

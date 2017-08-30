@@ -34,35 +34,19 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         /// <summary>
         /// The inner stream this object delegates to.
         /// </summary>
-        protected Stream InnerStream
-        {
-            get { return _innerStream; }
-        }
+        protected Stream InnerStream => _innerStream;
 
         /// <inheritdoc />
-        public override bool CanRead
-        {
-            get { return _innerStream.CanRead; }
-        }
+        public override bool CanRead => _innerStream.CanRead;
 
         /// <inheritdoc />
-        public override bool CanSeek
-        {
-            get { return _innerStream.CanSeek; }
-        }
+        public override bool CanSeek => _innerStream.CanSeek;
 
         /// <inheritdoc />
-        public override bool CanWrite
-        {
-            get { return _innerStream.CanWrite; }
-        }
+        public override bool CanWrite => _innerStream.CanWrite;
 
         /// <inheritdoc />
-        public override long Length
-        {
-            get { return _innerStream.Length; }
-        }
-
+        public override long Length => _innerStream.Length;
         /// <inheritdoc />
         public override long Position
         {
@@ -78,10 +62,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         }
 
         /// <inheritdoc />
-        public override bool CanTimeout
-        {
-            get { return _innerStream.CanTimeout; }
-        }
+        public override bool CanTimeout => _innerStream.CanTimeout;
 
         /// <inheritdoc />
         public override int WriteTimeout
@@ -107,7 +88,7 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         {
             return _innerStream.ReadAsync(buffer, offset, count, cancellationToken);
         }
-#if NET451
+
         /// <inheritdoc />
         public override IAsyncResult BeginRead(
             byte[] buffer,
@@ -124,7 +105,29 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         {
             return _innerStream.EndRead(asyncResult);
         }
-#endif
+
+        /// <inheritdoc />
+        public override IAsyncResult BeginWrite(
+            byte[] buffer,
+            int offset,
+            int count,
+            AsyncCallback callback,
+            object state)
+        {
+            return _innerStream.BeginWrite(buffer, offset, count, callback, state);
+        }
+
+        /// <inheritdoc />
+        public override void EndWrite(IAsyncResult asyncResult)
+        {
+            _innerStream.EndWrite(asyncResult);
+        }
+
+        /// <inheritdoc />
+        public override void Close()
+        {
+        }
+
         /// <inheritdoc />
         public override int ReadByte()
         {
@@ -166,35 +169,13 @@ namespace Microsoft.AspNetCore.Mvc.Internal
         {
             return _innerStream.WriteAsync(buffer, offset, count, cancellationToken);
         }
-#if NET451
-        /// <inheritdoc />
-        public override IAsyncResult BeginWrite(
-            byte[] buffer,
-            int offset,
-            int count,
-            AsyncCallback callback,
-            object state)
-        {
-            return _innerStream.BeginWrite(buffer, offset, count, callback, state);
-        }
 
-        /// <inheritdoc />
-        public override void EndWrite(IAsyncResult asyncResult)
-        {
-            _innerStream.EndWrite(asyncResult);
-        }
-#endif
         /// <inheritdoc />
         public override void WriteByte(byte value)
         {
             _innerStream.WriteByte(value);
         }
-#if NET451
-        /// <inheritdoc />
-        public override void Close()
-        {
-        }
-#endif
+
         /// <inheritdoc />
         protected override void Dispose(bool disposing)
         {

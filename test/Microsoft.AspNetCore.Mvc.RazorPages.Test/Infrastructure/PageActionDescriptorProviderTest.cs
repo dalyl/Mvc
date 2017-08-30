@@ -4,12 +4,9 @@
 using System;
 using Microsoft.AspNetCore.Mvc.Abstractions;
 using Microsoft.AspNetCore.Mvc.ApplicationModels;
-using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.Razor.Internal;
-using Microsoft.AspNetCore.Mvc.RazorPages.Internal;
-using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
-using Microsoft.AspNetCore.Razor.Evolution;
+using Microsoft.AspNetCore.Razor.Language;
 using Microsoft.Extensions.Options;
 using Moq;
 using Xunit;
@@ -19,17 +16,12 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
     public class PageActionDescriptorProviderTest
     {
         [Fact]
-        public void GetDescriptors_DoesNotAddDescriptorsForFilesWithoutDirectives()
+        public void GetDescriptors_DoesNotAddDescriptorsIfNoApplicationModelsAreDiscovered()
         {
             // Arrange
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
-                {
-                    GetProjectItem("/", "/Index.cshtml", "<h1>Hello world</h1>"),
-                });
+            var applicationModelProvider = new TestPageRouteModelProvider();
             var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
+                new[] { applicationModelProvider },
                 GetAccessor<MvcOptions>(),
                 GetRazorPagesOptions());
             var context = new ActionDescriptorProviderContext();
@@ -42,17 +34,25 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
         }
 
         [Fact]
-        public void GetDescriptors_AddsDescriptorsForFileWithPageDirective()
+        public void GetDescriptors_AddsDescriptorsForModelWithSelector()
         {
             // Arrange
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
+            var model = new PageRouteModel("/Test.cshtml", "/Test")
+            {
+                Selectors =
                 {
-                    GetProjectItem("/", "/Test.cshtml", $"@page{Environment.NewLine}<h1>Hello world</h1>"),
-                });
+                    new SelectorModel
+                    {
+                        AttributeRouteModel = new AttributeRouteModel
+                        {
+                            Template = "/Test/{id:int?}",
+                        }
+                    }
+                }
+            };
+            var applicationModelProvider = new TestPageRouteModelProvider(model);
             var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
+                new[] { applicationModelProvider },
                 GetAccessor<MvcOptions>(),
                 GetRazorPagesOptions());
             var context = new ActionDescriptorProviderContext();
@@ -65,53 +65,49 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
             var descriptor = Assert.IsType<PageActionDescriptor>(result);
             Assert.Equal("/Test.cshtml", descriptor.RelativePath);
             Assert.Equal("/Test", descriptor.RouteValues["page"]);
-            Assert.Equal("Test", descriptor.AttributeRouteInfo.Template);
+            Assert.Equal("/Test/{id:int?}", descriptor.AttributeRouteInfo.Template);
         }
 
         [Fact]
-        public void GetDescriptors_AddsDescriptorsForFileWithPageDirectiveAndRouteTemplate()
+        public void GetDescriptors_AddsActionDescriptorForEachSelector()
         {
             // Arrange
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
+            var applicationModelProvider = new TestPageRouteModelProvider(
+                new PageRouteModel("/base-path/Test.cshtml", "/base-path/Test")
                 {
-                    GetProjectItem("/", "/Test.cshtml", $"@page \"Home\" {Environment.NewLine}<h1>Hello world</h1>"),
-                });
-            var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
-                GetAccessor<MvcOptions>(),
-                GetRazorPagesOptions());
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            var result = Assert.Single(context.Results);
-            var descriptor = Assert.IsType<PageActionDescriptor>(result);
-            Assert.Equal("/Test.cshtml", descriptor.RelativePath);
-            Assert.Equal("/Test", descriptor.RouteValues["page"]);
-            Assert.Equal("Test/Home", descriptor.AttributeRouteInfo.Template);
-        }
-
-        [Fact]
-        public void GetDescriptors_GeneratesRouteTemplate()
-        {
-            // Arrange
-            var razorProject = new Mock<RazorProject>(MockBehavior.Strict);
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
+                    Selectors =
+                    {
+                        CreateSelectorModel("base-path/Test/Home")
+                    }
+                },
+                new PageRouteModel("/base-path/Index.cshtml", "/base-path/Index")
                 {
-                    GetProjectItem("/", "/base-path/Test.cshtml", $"@page \"Home\" {Environment.NewLine}<h1>Hello world</h1>"),
-                    GetProjectItem("/", "/base-path/Index.cshtml", $"@page {Environment.NewLine}"),
-                    GetProjectItem("/", "/base-path/Admin/Index.cshtml", $"@page{Environment.NewLine}"),
-                    GetProjectItem("/", "/base-path/Admin/User.cshtml", $"@page{Environment.NewLine}"),
+                    Selectors =
+                    {
+                         CreateSelectorModel("base-path/Index"),
+                         CreateSelectorModel("base-path/"),
+                    }
+                },
+                new PageRouteModel("/base-path/Admin/Index.cshtml", "/base-path/Admin/Index")
+                {
+                    Selectors =
+                    {
+                         CreateSelectorModel("base-path/Admin/Index"),
+                         CreateSelectorModel("base-path/Admin"),
+                    }
+                },
+                new PageRouteModel("/base-path/Admin/User.cshtml", "/base-path/Admin/User")
+                {
+                    Selectors =
+                    {
+                         CreateSelectorModel("base-path/Admin/User"),
+                    },
                 });
+
             var options = GetRazorPagesOptions();
 
             var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
+                new[] { applicationModelProvider },
                 GetAccessor<MvcOptions>(),
                 options);
             var context = new ActionDescriptorProviderContext();
@@ -123,122 +119,39 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
             Assert.Collection(context.Results,
                 result => Assert.Equal("base-path/Test/Home", result.AttributeRouteInfo.Template),
                 result => Assert.Equal("base-path/Index", result.AttributeRouteInfo.Template),
-                result => Assert.Equal("base-path", result.AttributeRouteInfo.Template),
+                result => Assert.Equal("base-path/", result.AttributeRouteInfo.Template),
                 result => Assert.Equal("base-path/Admin/Index", result.AttributeRouteInfo.Template),
                 result => Assert.Equal("base-path/Admin", result.AttributeRouteInfo.Template),
                 result => Assert.Equal("base-path/Admin/User", result.AttributeRouteInfo.Template));
         }
 
-        [Fact]
-        public void GetDescriptors_UsesBasePathOption_WhenGeneratingRouteTemplate()
+        private static SelectorModel CreateSelectorModel(string template)
         {
-            // Arrange
-            var razorProject = new Mock<RazorProject>(MockBehavior.Strict);
-            razorProject.Setup(p => p.EnumerateItems("/base-path"))
-                .Returns(new[]
+            return new SelectorModel
+            {
+                AttributeRouteModel = new AttributeRouteModel
                 {
-                    GetProjectItem("/base-path", "/Test.cshtml", $"@page \"Home\" {Environment.NewLine}<h1>Hello world</h1>"),
-                    GetProjectItem("/base-path", "/Index.cshtml", $"@page {Environment.NewLine}"),
-                    GetProjectItem("/base-path", "/Admin/Index.cshtml", $"@page{Environment.NewLine}"),
-                    GetProjectItem("/base-path", "/Admin/User.cshtml", $"@page{Environment.NewLine}"),
-                });
-            var options = GetRazorPagesOptions();
-            options.Value.RootDirectory = "/base-path";
-            var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
-                GetAccessor<MvcOptions>(),
-                options);
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            Assert.Collection(context.Results,
-                result => Assert.Equal("Test/Home", result.AttributeRouteInfo.Template),
-                result => Assert.Equal("Index", result.AttributeRouteInfo.Template),
-                result => Assert.Equal("", result.AttributeRouteInfo.Template),
-                result => Assert.Equal("Admin/Index", result.AttributeRouteInfo.Template),
-                result => Assert.Equal("Admin", result.AttributeRouteInfo.Template),
-                result => Assert.Equal("Admin/User", result.AttributeRouteInfo.Template));
-
-        }
-
-        [Theory]
-        [InlineData("/Path1")]
-        [InlineData("~/Path1")]
-        public void GetDescriptors_ThrowsIfRouteTemplatesAreOverriden(string template)
-        {
-            // Arrange
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
-                {
-                    GetProjectItem("/", "/Test.cshtml", $"@page \"{template}\" {Environment.NewLine}<h1>Hello world</h1>"),
-                });
-            var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
-                GetAccessor<MvcOptions>(),
-                GetRazorPagesOptions());
-            var context = new ActionDescriptorProviderContext();
-
-            // Act and Assert
-            var ex = Assert.Throws<InvalidOperationException>(() => provider.OnProvidersExecuting(context));
-            Assert.Equal(
-                "The route for the page at '/Test.cshtml' cannot start with / or ~/. " +
-                "Pages do not support overriding the file path of the page.",
-                ex.Message);
+                    Template = template,
+                }
+            };
         }
 
         [Fact]
-        public void GetDescriptors_WithEmptyPageDirective_MapsIndexToEmptySegment()
+        public void GetDescriptors_AddsMultipleDescriptorsForPageWithMultipleSelectors()
         {
             // Arrange
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
+            var applicationModelProvider = new TestPageRouteModelProvider(
+                new PageRouteModel("/Catalog/Details/Index.cshtml", "/Catalog/Details/Index")
                 {
-                    GetProjectItem("", "/About/Index.cshtml", $"@page {Environment.NewLine}"),
+                    Selectors =
+                    {
+                         CreateSelectorModel("/Catalog/Details/Index/{id:int?}"),
+                         CreateSelectorModel("/Catalog/Details/{id:int?}"),
+                    },
                 });
+
             var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
-                GetAccessor<MvcOptions>(),
-                GetRazorPagesOptions());
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            Assert.Collection(context.Results,
-                result =>
-                {
-                    var descriptor = Assert.IsType<PageActionDescriptor>(result);
-                    Assert.Equal("/About/Index.cshtml", descriptor.RelativePath);
-                    Assert.Equal("/About/Index", descriptor.RouteValues["page"]);
-                    Assert.Equal("About/Index", descriptor.AttributeRouteInfo.Template);
-                },
-                result =>
-                {
-                    var descriptor = Assert.IsType<PageActionDescriptor>(result);
-                    Assert.Equal("/About/Index.cshtml", descriptor.RelativePath);
-                    Assert.Equal("/About/Index", descriptor.RouteValues["page"]);
-                    Assert.Equal("About", descriptor.AttributeRouteInfo.Template);
-                });
-        }
-
-        [Fact]
-        public void GetDescriptors_WithNonEmptyPageDirective_MapsIndexToEmptySegment()
-        {
-            // Arrange
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
-                {
-                    GetProjectItem("", "/Catalog/Details/Index.cshtml", $"@page \"{{id:int?}}\" {Environment.NewLine}"),
-                });
-            var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
+                new[] { applicationModelProvider },
                 GetAccessor<MvcOptions>(),
                 GetRazorPagesOptions());
             var context = new ActionDescriptorProviderContext();
@@ -253,161 +166,32 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
                     var descriptor = Assert.IsType<PageActionDescriptor>(result);
                     Assert.Equal("/Catalog/Details/Index.cshtml", descriptor.RelativePath);
                     Assert.Equal("/Catalog/Details/Index", descriptor.RouteValues["page"]);
-                    Assert.Equal("Catalog/Details/Index/{id:int?}", descriptor.AttributeRouteInfo.Template);
+                    Assert.Equal("/Catalog/Details/Index/{id:int?}", descriptor.AttributeRouteInfo.Template);
                 },
                 result =>
                 {
                     var descriptor = Assert.IsType<PageActionDescriptor>(result);
                     Assert.Equal("/Catalog/Details/Index.cshtml", descriptor.RelativePath);
                     Assert.Equal("/Catalog/Details/Index", descriptor.RouteValues["page"]);
-                    Assert.Equal("Catalog/Details/{id:int?}", descriptor.AttributeRouteInfo.Template);
+                    Assert.Equal("/Catalog/Details/{id:int?}", descriptor.AttributeRouteInfo.Template);
                 });
         }
 
-        [Fact]
-        public void GetDescriptors_ImplicitFilters()
+        private static PageRouteModel CreateModel()
         {
-            // Arrange
-            var options = new MvcOptions();
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
+            return new PageRouteModel("/Home.cshtml", "/Home")
+            {
+                Selectors =
                 {
-                    GetProjectItem("/", "/Home.cshtml", $"@page {Environment.NewLine}"),
-                });
-            var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
-                GetAccessor(options),
-                GetRazorPagesOptions());
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            var result = Assert.Single(context.Results);
-            var descriptor = Assert.IsType<PageActionDescriptor>(result);
-            Assert.Collection(
-                descriptor.FilterDescriptors,
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<SaveTempDataPropertyFilter>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<AutoValidateAntiforgeryTokenAttribute>(filterDescriptor.Filter);
-                });
-        }
-
-        [Fact]
-        public void GetDescriptors_AddsGlobalFilters()
-        {
-            // Arrange
-            var filter1 = Mock.Of<IFilterMetadata>();
-            var filter2 = Mock.Of<IFilterMetadata>();
-            var options = new MvcOptions();
-            options.Filters.Add(filter1);
-            options.Filters.Add(filter2);
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
-                {
-                    GetProjectItem("/", "/Home.cshtml", $"@page {Environment.NewLine}"),
-                });
-            var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
-                GetAccessor(options),
-                GetRazorPagesOptions());
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            var result = Assert.Single(context.Results);
-            var descriptor = Assert.IsType<PageActionDescriptor>(result);
-            Assert.Collection(
-                descriptor.FilterDescriptors,
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Global, filterDescriptor.Scope);
-                    Assert.Same(filter1, filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Global, filterDescriptor.Scope);
-                    Assert.Same(filter2, filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<SaveTempDataPropertyFilter>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<AutoValidateAntiforgeryTokenAttribute>(filterDescriptor.Filter);
-                });
-        }
-
-        [Fact]
-        public void GetDescriptors_AddsFiltersAddedByConvention()
-        {
-            // Arrange
-            var globalFilter = Mock.Of<IFilterMetadata>();
-            var localFilter = Mock.Of<IFilterMetadata>();
-            var options = new MvcOptions();
-            options.Filters.Add(globalFilter);
-            var convention = new Mock<IPageApplicationModelConvention>();
-            convention.Setup(c => c.Apply(It.IsAny<PageApplicationModel>()))
-                .Callback((PageApplicationModel model) =>
-                {
-                    model.Filters.Add(localFilter);
-                });
-            var razorOptions = GetRazorPagesOptions();
-            razorOptions.Value.Conventions.Add(convention.Object);
-
-            var razorProject = new Mock<RazorProject>();
-            razorProject.Setup(p => p.EnumerateItems("/"))
-                .Returns(new[]
-                {
-                    GetProjectItem("/", "/Home.cshtml", $"@page {Environment.NewLine}"),
-                });
-            var provider = new PageActionDescriptorProvider(
-                razorProject.Object,
-                GetAccessor(options),
-                razorOptions);
-            var context = new ActionDescriptorProviderContext();
-
-            // Act
-            provider.OnProvidersExecuting(context);
-
-            // Assert
-            var result = Assert.Single(context.Results);
-            var descriptor = Assert.IsType<PageActionDescriptor>(result);
-            Assert.Collection(descriptor.FilterDescriptors,
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Global, filterDescriptor.Scope);
-                    Assert.Same(globalFilter, filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<SaveTempDataPropertyFilter>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.IsType<AutoValidateAntiforgeryTokenAttribute>(filterDescriptor.Filter);
-                },
-                filterDescriptor =>
-                {
-                    Assert.Equal(FilterScope.Action, filterDescriptor.Scope);
-                    Assert.Same(localFilter, filterDescriptor.Filter);
-                });
+                    new SelectorModel
+                    {
+                        AttributeRouteModel = new AttributeRouteModel
+                        {
+                            Template = "Home",
+                        }
+                    }
+                }
+            };
         }
 
         private static IOptions<TOptions> GetAccessor<TOptions>(TOptions options = null)
@@ -420,7 +204,7 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
 
         private static IOptions<RazorPagesOptions> GetRazorPagesOptions()
         {
-            return new OptionsManager<RazorPagesOptions>(new[] { new RazorPagesOptionsSetup() });
+            return new TestOptionsManager<RazorPagesOptions>();
         }
 
         private static RazorProjectItem GetProjectItem(string basePath, string path, string content)
@@ -430,7 +214,31 @@ namespace Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure
                 Content = content,
             };
 
-            return new DefaultRazorProjectItem(testFileInfo, basePath, path);
+            return new FileProviderRazorProjectItem(testFileInfo, basePath, path);
+        }
+
+        private class TestPageRouteModelProvider : IPageRouteModelProvider
+        {
+            private readonly PageRouteModel[] _models;
+
+            public TestPageRouteModelProvider(params PageRouteModel[] models)
+            {
+                _models = models ?? Array.Empty<PageRouteModel>();
+            }
+
+            public int Order => -1000;
+
+            public void OnProvidersExecuted(PageRouteModelProviderContext context)
+            {
+            }
+
+            public void OnProvidersExecuting(PageRouteModelProviderContext context)
+            {
+                foreach (var model in _models)
+                {
+                    context.RouteModels.Add(model);
+                }
+            }
         }
     }
 }

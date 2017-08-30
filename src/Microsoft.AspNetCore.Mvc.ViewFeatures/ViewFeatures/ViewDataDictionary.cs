@@ -5,9 +5,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Globalization;
-#if NETSTANDARD1_6
-using System.Reflection;
-#endif
 using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Mvc.ModelBinding.Metadata;
 using Microsoft.Extensions.Internal;
@@ -370,7 +367,7 @@ namespace Microsoft.AspNetCore.Mvc.ViewFeatures
         public object Eval(string expression)
         {
             var info = GetViewDataInfo(expression);
-            return (info != null) ? info.Value : null;
+            return info?.Value;
         }
 
         /// <summary>

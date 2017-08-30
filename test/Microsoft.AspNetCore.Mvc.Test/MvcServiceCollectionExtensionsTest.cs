@@ -23,6 +23,7 @@ using Microsoft.AspNetCore.Mvc.Razor;
 using Microsoft.AspNetCore.Mvc.Razor.Compilation;
 using Microsoft.AspNetCore.Mvc.Razor.Internal;
 using Microsoft.AspNetCore.Mvc.Razor.TagHelpers;
+using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.AspNetCore.Mvc.RazorPages.Infrastructure;
 using Microsoft.AspNetCore.Mvc.RazorPages.Internal;
 using Microsoft.AspNetCore.Mvc.TagHelpers;
@@ -30,6 +31,7 @@ using Microsoft.AspNetCore.Mvc.ViewComponents;
 using Microsoft.AspNetCore.Mvc.ViewFeatures;
 using Microsoft.AspNetCore.Mvc.ViewFeatures.Internal;
 using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.ObjectPool;
@@ -212,8 +214,8 @@ namespace Microsoft.AspNetCore.Mvc
             Assert.Collection(manager.FeatureProviders,
                 feature => Assert.IsType<ControllerFeatureProvider>(feature),
                 feature => Assert.IsType<ViewComponentFeatureProvider>(feature),
-                feature => Assert.IsType<TagHelperFeatureProvider>(feature),
                 feature => Assert.IsType<MetadataReferenceFeatureProvider>(feature),
+                feature => Assert.IsType<TagHelperFeatureProvider>(feature),
                 feature => Assert.IsType<ViewsFeatureProvider>(feature));
         }
 
@@ -259,6 +261,7 @@ namespace Microsoft.AspNetCore.Mvc
             services.AddSingleton<IHostingEnvironment>(GetHostingEnvironment());
             services.AddSingleton<ObjectPoolProvider, DefaultObjectPoolProvider>();
             services.AddSingleton<DiagnosticSource>(new DiagnosticListener("Microsoft.AspNet"));
+            services.AddSingleton<IConfiguration>(new ConfigurationBuilder().Build());
             services.AddLogging();
             services.AddOptions();
             services.AddMvc();
@@ -358,10 +361,8 @@ namespace Microsoft.AspNetCore.Mvc
                         typeof(IConfigureOptions<RazorViewEngineOptions>),
                         new[]
                         {
-#pragma warning disable 0618
                             typeof(RazorViewEngineOptionsSetup),
-#pragma warning restore 0618
-                            typeof(DependencyContextRazorViewEngineOptionsSetup)
+                            typeof(RazorPagesRazorViewEngineOptionsSetup),
                         }
                     },
                     {
@@ -409,6 +410,7 @@ namespace Microsoft.AspNetCore.Mvc
                             typeof(DefaultApplicationModelProvider),
                             typeof(CorsApplicationModelProvider),
                             typeof(AuthorizationApplicationModelProvider),
+                            typeof(TempDataApplicationModelProvider),
                         }
                     },
                     {
@@ -417,6 +419,25 @@ namespace Microsoft.AspNetCore.Mvc
                         {
                             typeof(DefaultApiDescriptionProvider),
                             typeof(JsonPatchOperationsArrayProvider),
+                        }
+                    },
+                    {
+                        typeof(IPageRouteModelProvider),
+                        new[]
+                        {
+                            typeof(CompiledPageRouteModelProvider),
+                            typeof(RazorProjectPageRouteModelProvider),
+                        }
+                    },
+                    {
+                        typeof(IPageApplicationModelProvider),
+                        new[]
+                        {
+                            typeof(AuthorizationPageApplicationModelProvider),
+                            typeof(AuthorizationPageApplicationModelProvider),
+                            typeof(DefaultPageApplicationModelProvider),
+                            typeof(TempDataFilterPageApplicationModelProvider),
+                            typeof(ResponseCacheFilterApplicationModelProvider),
                         }
                     },
                 };
